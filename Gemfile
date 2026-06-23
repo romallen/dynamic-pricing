@@ -29,14 +29,16 @@ gem "httparty"
 # Telemetry — OpenTelemetry traces + metrics. All loaded with require: false and
 # activated only by config/initializers/opentelemetry.rb when OTEL_ENABLED=true,
 # so a default boot pulls in none of it. Metrics gems are still beta upstream.
-gem "opentelemetry-sdk", require: false
-gem "opentelemetry-instrumentation-all", require: false
 gem "opentelemetry-exporter-otlp", require: false
-gem "opentelemetry-metrics-sdk", require: false
 gem "opentelemetry-exporter-otlp-metrics", require: false
+gem "opentelemetry-instrumentation-all", require: false
+gem "opentelemetry-metrics-sdk", require: false
+gem "opentelemetry-sdk", require: false
 
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 # gem "rack-cors"
+
+gem "lograge"
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem

@@ -12,9 +12,6 @@ class BaseService
   private
 
   def log_event(level, event, **fields)
-    pairs = fields.map { |k, v| "#{k}=#{v.to_s.inspect}" }
-    msg = "[#{self.class.name.demodulize}] event=#{event}"
-    msg += " #{pairs.join(' ')}" unless pairs.empty?
-    Rails.logger.public_send(level, msg)
+    Rails.logger.public_send(level, { service: self.class.name.demodulize, event: event }.merge(fields).to_json)
   end
 end

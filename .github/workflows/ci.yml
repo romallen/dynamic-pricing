@@ -19,7 +19,7 @@ jobs:
       - name: Lint
         run: docker compose exec -T interview-dev bundle exec rubocop
       - name: Typecheck
-        run: docker compose exec -T interview-dev bundle exec steep check
+        run: docker compose exec -T interview-dev bundle exec rbs -I sig validate
       - name: Stop services
         if: always()
         run: docker compose down

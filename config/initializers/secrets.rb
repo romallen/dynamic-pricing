@@ -5,7 +5,7 @@
 # Other providers (GCP Secret Manager, HashiCorp Vault, K8s secrets) that
 # inject vars at the platform level don't need this file at all.
 return unless Rails.env.production?
-return unless (arn = ENV["SECRETS_ARN"])
+return unless (arn = ENV.fetch("SECRETS_ARN", nil))
 
 require "aws-sdk-secretsmanager"
 

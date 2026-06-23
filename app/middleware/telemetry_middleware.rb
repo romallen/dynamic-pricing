@@ -55,7 +55,6 @@ class TelemetryMiddleware
 
       Telemetry.record_request(duration_s: duration, status_code: status, result: status < 400 ? "success" : "error")
 
-      log_request(req, status, duration)
       [status, headers, body]
     end
   end
@@ -81,15 +80,5 @@ class TelemetryMiddleware
     return unless controller && action
 
     "#{controller}##{action}"
-  end
-
-  def log_request(req, status, duration)
-    Rails.logger.info(
-      "[Telemetry] event=request_complete " \
-      "method=#{req.request_method} " \
-      "path=#{req.path} " \
-      "status=#{status} " \
-      "duration=#{format('%.3f', duration)}"
-    )
   end
 end

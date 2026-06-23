@@ -1,82 +1,98 @@
-<div align="center">
-   <img src="/img/logo.svg?raw=true" width=600 style="background-color:white;">
-</div>
+# Dynamic Pricing Proxy
 
-# Backend Engineering Take-Home Assignment: Dynamic Pricing Proxy
+Caches rate-api responses. Same period/hotel/room in the next 5 minutes? Cache hit, no upstream call.
 
-Welcome to the Tripla backend engineering take-home assignment\! 🧑‍💻 This exercise is designed to simulate a real-world problem you might encounter as part of our team.
-
-⚠️ **Before you begin**, please review the main [FAQ](/README.md#frequently-asked-questions). It contains important information, **including our specific guidelines on how to submit your solution.**
-
-## The Challenge
-
-At Tripla, we use a dynamic pricing model for hotel rooms. Instead of static, unchanging rates, our model uses a real-time algorithm to adjust prices based on market demand and other data signals. This helps us maximize both revenue and occupancy.
-
-Our Data and AI team built a powerful model to handle this, but its inference process is computationally expensive to run. To make this product more cost-effective, we analyzed the model's output and found that a calculated room rate remains effective for up to 5 minutes.
-
-This insight presents a great optimization opportunity, and that's where you come in.
-
-## Your Mission
-
-Your mission is to build an efficient service that acts as an intermediary to our dynamic pricing model. This service will be responsible for providing rates to our users while respecting the operational constraints of the expensive model behind it.
-
-You will start with a Ruby on Rails application that is already integrated with our dynamic pricing model. However, the current implementation fetches a new rate for every single request. Your mission is to ensure this service handles the pricing models' constraints.
-
-## Core Requirements
-
-1. Review the pricing model's API and its constraints. The model's docker image and documentation are hosted on dockerhub:  [tripladev/rate-api](https://hub.docker.com/r/tripladev/rate-api).
-
-2. Ensure rate validity. A rate fetched from the pricing model is considered valid for 5 minutes. Your service must ensure that any rate it provides for a given set of parameters (`period`, `hotel`, `room`) is no older than this 5-minute window.
-
-3. Honor throughput requirements. Your solution must be able to handle at least 10,000 requests per day from our users while using a single API token.
-
-## How We'll Evaluate Your Work
-
-This isn't just about getting the right answer. We're excited to see how you approach the problem. Treat this as you would a production-ready feature.
-
-  * We'll be looking for clean, well-structured, and testable code. Feel free to add dependencies or refactor the existing scaffold as you see fit.
-  * How do you decide on your approach to meeting the performance and cost requirements? Documenting your thought process is a great way to share this.
-  * A reliable service anticipates failure. How does your service behave if the pricing model is slow, or returns an error? Providing descriptive error messages to the end-user is a key part of a robust API.
-  * We want to see how you work around constraints and navigate an existing codebase to deliver a solution.
-
-
-## Minimum Deliverables
-
-1.  A link to your Git repository containing the complete solution.
-2.  Clear instructions in the `README.md` on how to build, test, and run your service.
-
-We highly value seeing your thought process. A great submission will also include documentation (e.g., in the `README.md`) discussing the design choices you made. Consider outlining different approaches you considered, their potential tradeoffs, and a clear rationale for why you chose your final solution.
-
-## Development Environment Setup
-
-The project scaffold is a minimal Ruby on Rails application with a `/api/v1/pricing` endpoint. While you're free to configure your environment as you wish, this repository is pre-configured for a Docker-based workflow that supports live reloading for your convenience.
-
-The provided `Dockerfile` builds a container with all necessary dependencies. Your local code is mounted directly into the container, so any changes you make on your machine will be reflected immediately. Your application will need to communicate with the external pricing model, which also runs in its own Docker container.
-
-### Quick Start Guide
-
-Here is a list of common commands for building, running, and interacting with the Dockerized environment.
+## Quick Start
 
 ```bash
+rake docker:build   # build image and start both services
+rake docker:start   # start if already built
+rake docker:stop
 
-# --- 1. Build & Run The Main Application ---
-# Build and run the Docker compose
-docker compose up -d --build
-
-# --- 2. Test The Endpoint ---
-# Send a sample request to your running service
-curl 'http://localhost:3000/api/v1/pricing?period=Summer&hotel=FloatingPointResort&room=SingletonRoom'
-
-# --- 3. Run Tests ---
-# Run the full test suite
-docker compose exec interview-dev ./bin/rails test
-
-# Run a specific test file
-docker compose exec interview-dev ./bin/rails test test/controllers/pricing_controller_test.rb
-
-# Run a specific test by name
-docker compose exec interview-dev ./bin/rails test test/controllers/pricing_controller_test.rb -n test_should_get_pricing_with_all_parameters
+rake docker:test
+rake docker:lint
+rake docker:typecheck
 ```
 
+```bash
+curl 'http://localhost:3000/api/v1/pricing?period=Summer&hotel=FloatingPointResort&room=SingletonRoom'
+```
 
-Good luck, and we look forward to seeing what you build\!
+| Parameter | Options |
+|-----------|---------|
+| `period`  | `Summer`, `Autumn`, `Winter`, `Spring` |
+| `hotel`   | `FloatingPointResort`, `GitawayHotel`, `RecursionRetreat` |
+| `room`    | `SingletonRoom`, `BooleanTwin`, `RestfulKing` |
+
+---
+
+## How it works
+
+rate-api gives 1,000 calls/day. The service needs to handle 10,000+. Without a cache, the quota is gone after the first 10% of traffic.
+
+Requests hit `PricingController` (validates params against fixed allowlists) then `PricingService`. The service calls `Rails.cache.fetch` with a 5-minute TTL. Cache hit returns immediately. On a miss, it calls rate-api, caches the result, and returns it. `race_condition_ttl: 5` prevents expiry stampedes. `skip_nil: true` means errors never get cached — a failed call returns a 400 and the next request retries fresh.
+
+**Why MemoryStore:** ships with Rails, no extra services needed. The cache resets on restart, but with a 5-minute TTL that costs at most one extra API call per combination. Scaling to multiple hosts means swapping to `:redis_cache_store` — `PricingService` doesn't change.
+
+---
+
+## Observability
+
+**Logs.** Every request and cache event emits a JSON line via `lograge` + `Rails.logger`, ready for Elastic, Datadog, or any collector that reads Docker stdout:
+
+```json
+{"method":"GET","path":"/api/v1/pricing","status":200,"duration":8.07,...}
+{"service":"PricingService","event":"cache_miss","key":"pricing/Summer/FloatingPointResort/SingletonRoom"}
+{"service":"PricingService","event":"api_unreachable","key":"...","error":"connection refused"}
+```
+
+**Traces and metrics.** OpenTelemetry is off by default — set `OTEL_ENABLED=true` in `.env` to turn it on. `TelemetryMiddleware` wraps every request in an `http.request` span with auto-instrumented child spans for Rails routing and the Net::HTTP call to rate-api. All endpoints get traces and metrics automatically. Four metrics: `http.server.requests`, `http.server.duration`, `pricing.cache.requests`, `pricing.upstream.duration`.
+
+| Var | Default | What it does |
+|-----|---------|--------------|
+| `OTEL_ENABLED` | `false` | Master switch |
+| `OTEL_SERVICE_NAME` | `dynamic-pricing` | Service name |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | Collector endpoint |
+| `OTEL_TRACES_EXPORTER` | `otlp` | Set to `console` to print spans locally |
+
+---
+
+## Tests
+
+```bash
+rake docker:test       # 38 tests, 105 assertions
+rake docker:lint       # RuboCop
+rake docker:typecheck  # RBS signatures
+```
+
+---
+
+## Production readiness
+
+Things added beyond the core caching requirement:
+
+- **HTTP timeout.** `default_timeout 3` on the HTTParty client. A slow rate-api response can't tie up a Puma thread indefinitely. Raises `Net::ReadTimeout`, caught and returned as a 400.
+- **Stampede protection.** `race_condition_ttl: 5` on every `cache.fetch`. When a key expires under load, one thread regenerates it while the rest briefly serve the stale value.
+- **Error isolation.** `skip_nil: true` means failed and malformed API responses are never written to the cache. The next request always gets a fresh attempt.
+- **Input validation.** Controller validates all three params against fixed allowlists before the service runs. Invalid params return 400 immediately — nothing reaches the cache or the upstream.
+- **Structured JSON logging.** `lograge` replaces Rails' multi-line request logs with a single JSON line per request. Service events (cache hit/miss, upstream errors) also emit JSON. Both are Elastic/Datadog-compatible out of the box — any collector reading Docker stdout can ingest them.
+- **OpenTelemetry.** Traces and metrics via `TelemetryMiddleware`. Off by default, zero overhead when disabled. Covers all endpoints automatically — no per-controller instrumentation needed.
+- **CI.** GitHub Actions runs tests, lint, and type checks on every push.
+- **Dependabot.** Weekly automated PRs for gem, Docker, and Actions updates.
+- **Secrets management.** `.env` for local dev. `config/initializers/secrets.rb` loads from AWS Secrets Manager in production when `SECRETS_ARN` is set.
+
+---
+
+## Future improvements
+
+- **Shared cache.** Swap MemoryStore for Redis or Valkey. Required for multi-host deployments or multiple Puma workers sharing state. `PricingService` doesn't change.
+- **Circuit breaker.** If rate-api goes down, every cache miss hammers it. A circuit breaker (e.g. `stoplight`) opens after N consecutive failures and short-circuits during a cooldown window.
+- **Quota tracking.** Rolling counter of upstream calls with an alert at ~80% of the 1,000/day cap. You want to know before requests start failing, not after.
+- **Telemetry backend.** The app emits JSON logs, OTel traces, and OTel metrics. Production needs a collector (Filebeat/Fluentd for logs, OTel Collector for traces/metrics) and dashboards — cache hit rate, upstream latency, error rate. Grafana/Tempo or Datadog both work with OTLP.
+- **Deeper health check.** `/up` confirms the process is alive. A `/healthz` that verifies the cache store is reachable gives load balancers better signal.
+
+---
+
+## AI assistance
+
+Ruby isn't my primary language, so I leaned on Claude Code to move faster — syntax, idioms, Rails conventions. I directed the design decisions and architecture, and I own the approach.
