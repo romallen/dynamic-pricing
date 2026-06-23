@@ -34,6 +34,11 @@ module Api::V1
 
         @result = parsed_rate['rates'].detect { |r| r['period'] == @period && r['hotel'] == @hotel && r['room'] == @room }&.dig('rate')
 
+        if @result.nil?
+          errors << "No rate found for the given parameters"
+          return
+        end
+
         Rails.cache.write(cache_key, @result, expires_in: CACHE_TTL)
       else
         begin
