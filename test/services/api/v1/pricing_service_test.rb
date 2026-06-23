@@ -1,6 +1,8 @@
 require "test_helper"
 
 class Api::V1::PricingServiceTest < ActiveSupport::TestCase
+  include ActiveSupport::Testing::TimeHelpers
+
   setup do
     Rails.cache.clear
   end
@@ -85,6 +87,78 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
       assert service.valid?, "Expected valid result on retry after previous failure"
       assert_equal DEFAULT_RATE, service.result
       assert_equal 2, api_call_count, "API should have been called twice (once for each attempt)"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Cache TTL
+  # ---------------------------------------------------------------------------
+
+  test "cache expires after TTL and triggers a fresh API call" do
+    api_call_count = 0
+    counting_stub  = ->(**) { api_call_count += 1; mock_api_response }
+
+    stub_rate_api(counting_stub) do
+      run_pricing_service  # populates cache
+
+      # Jump past the 5-minute window — the cached entry should now be stale
+      travel Api::V1::PricingService::CACHE_TTL + 1.second do
+        run_pricing_service
+      end
+
+      assert_equal 2, api_call_count, "Cache should expire after #{Api::V1::PricingService::CACHE_TTL}, forcing a fresh API call"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Malformed / unexpected API responses
+  # ---------------------------------------------------------------------------
+
+  test "malformed JSON in success response: adds error" do
+    stub_rate_api(OpenStruct.new(success?: true, body: "not-valid-json")) do
+      service = run_pricing_service
+
+      assert_not service.valid?
+      assert_includes service.errors.first, "unexpected response"
+    end
+  end
+
+  test "API error with non-JSON body: uses fallback message" do
+    stub_rate_api(OpenStruct.new(success?: false, body: "<html>500 Internal Server Error</html>")) do
+      service = run_pricing_service
+
+      assert_not service.valid?
+      assert_includes service.errors.first, "Pricing model returned an error"
+    end
+  end
+
+  test "API error without error key in body: uses fallback message" do
+    stub_rate_api(OpenStruct.new(success?: false, body: { "message" => "something went wrong" }.to_json)) do
+      service = run_pricing_service
+
+      assert_not service.valid?
+      assert_includes service.errors.first, "Pricing model returned an error"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Data-driven: spot-check several valid param combinations
+  # ---------------------------------------------------------------------------
+
+  [
+    ["Summer", "FloatingPointResort", "SingletonRoom"],
+    ["Winter", "GitawayHotel",        "BooleanTwin"],
+    ["Autumn", "RecursionRetreat",    "RestfulKing"],
+    ["Spring", "FloatingPointResort", "BooleanTwin"],
+  ].each do |period, hotel, room|
+    test "fetches and caches rate for #{period}/#{hotel}/#{room}" do
+      stub_rate_api(mock_api_response(period: period, hotel: hotel, room: room, rate: "20000")) do
+        service = run_pricing_service(period: period, hotel: hotel, room: room)
+
+        assert service.valid?
+        assert_equal "20000", service.result
+        assert_equal "20000", Rails.cache.read("pricing/#{period}/#{hotel}/#{room}")
+      end
     end
   end
 end
