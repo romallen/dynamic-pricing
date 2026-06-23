@@ -54,7 +54,11 @@ Rails.application.configure do
   # want to log everything, set the level to "debug".
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info")
 
-  config.cache_store = :mem_cache_store, { size: 32.megabytes }
+  # Use an in-memory store, consistent with the single-instance design
+  # documented in the README. :mem_cache_store would require the `dalli` gem
+  # and a running memcached, neither of which this deployment provides.
+  # MemoryStore defaults to a 32 MB bound, so it cannot grow without limit.
+  config.cache_store = :memory_store
 
   # Use a real queuing backend for Active Job (and separate queues per environment).
   # config.active_job.queue_adapter = :resque
