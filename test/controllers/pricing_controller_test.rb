@@ -80,11 +80,15 @@ class Api::V1::PricingControllerTest < ActionDispatch::IntegrationTest
 
   test "second identical request is served from cache without calling the API again" do
     api_call_count = 0
-    counting_stub  = ->(**) { api_call_count += 1; mock_api_response }
+    counting_stub  = lambda { |**|
+      api_call_count += 1
+      mock_api_response
+    }
 
     stub_rate_api(counting_stub) do
       2.times do
         get api_v1_pricing_url, params: { period: "Summer", hotel: "FloatingPointResort", room: "SingletonRoom" }
+
         assert_response :success
       end
 

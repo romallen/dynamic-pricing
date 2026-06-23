@@ -11,17 +11,21 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
     stub_rate_api(mock_api_response) do
       service = run_pricing_service
 
-      assert service.valid?
+      assert_predicate service, :valid?
       assert_equal DEFAULT_RATE, service.result
 
       cached = Rails.cache.read("pricing/#{DEFAULT_PERIOD}/#{DEFAULT_HOTEL}/#{DEFAULT_ROOM}")
+
       assert_equal DEFAULT_RATE, cached
     end
   end
 
   test "cache hit: returns cached result without calling the API again" do
     api_call_count = 0
-    counting_stub  = ->(**) { api_call_count += 1; mock_api_response }
+    counting_stub  = lambda { |**|
+      api_call_count += 1
+      mock_api_response
+    }
 
     stub_rate_api(counting_stub) do
       run_pricing_service  # populates cache
@@ -58,13 +62,17 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
       assert_includes service.errors.first, "No rate found"
 
       cached = Rails.cache.read("pricing/#{DEFAULT_PERIOD}/#{DEFAULT_HOTEL}/#{DEFAULT_ROOM}")
+
       assert_nil cached, "Error results must never be written to the cache"
     end
   end
 
   test "different param combinations use separate cache entries" do
     api_call_count = 0
-    counting_stub  = ->(**kw) { api_call_count += 1; mock_api_response(**kw.slice(:period, :hotel, :room)) }
+    counting_stub  = lambda { |**kw|
+      api_call_count += 1
+      mock_api_response(**kw.slice(:period, :hotel, :room))
+    }
 
     stub_rate_api(counting_stub) do
       run_pricing_service(period: "Summer", hotel: "FloatingPointResort", room: "SingletonRoom")
@@ -77,14 +85,20 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
   test "failed requests are not cached: next request retries the API" do
     api_call_count = 0
 
-    stub_rate_api(->(**) { api_call_count += 1; mock_api_error_response }) do
+    stub_rate_api(lambda { |**|
+      api_call_count += 1
+      mock_api_error_response
+    }) do
       run_pricing_service
     end
 
-    stub_rate_api(->(**) { api_call_count += 1; mock_api_response }) do
+    stub_rate_api(lambda { |**|
+      api_call_count += 1
+      mock_api_response
+    }) do
       service = run_pricing_service
 
-      assert service.valid?, "Expected valid result on retry after previous failure"
+      assert_predicate service, :valid?, "Expected valid result on retry after previous failure"
       assert_equal DEFAULT_RATE, service.result
       assert_equal 2, api_call_count, "API should have been called twice (once for each attempt)"
     end
@@ -96,10 +110,13 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
 
   test "cache expires after TTL and triggers a fresh API call" do
     api_call_count = 0
-    counting_stub  = ->(**) { api_call_count += 1; mock_api_response }
+    counting_stub  = lambda { |**|
+      api_call_count += 1
+      mock_api_response
+    }
 
     stub_rate_api(counting_stub) do
-      run_pricing_service  # populates cache
+      run_pricing_service # populates cache
 
       # Jump past the 5-minute window — the cached entry should now be stale
       travel Api::V1::PricingService::CACHE_TTL + 1.second do
@@ -146,16 +163,16 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
   # ---------------------------------------------------------------------------
 
   [
-    ["Summer", "FloatingPointResort", "SingletonRoom"],
-    ["Winter", "GitawayHotel",        "BooleanTwin"],
-    ["Autumn", "RecursionRetreat",    "RestfulKing"],
-    ["Spring", "FloatingPointResort", "BooleanTwin"],
+    %w[Summer FloatingPointResort SingletonRoom],
+    %w[Winter GitawayHotel BooleanTwin],
+    %w[Autumn RecursionRetreat RestfulKing],
+    %w[Spring FloatingPointResort BooleanTwin]
   ].each do |period, hotel, room|
     test "fetches and caches rate for #{period}/#{hotel}/#{room}" do
       stub_rate_api(mock_api_response(period: period, hotel: hotel, room: room, rate: "20000")) do
         service = run_pricing_service(period: period, hotel: hotel, room: room)
 
-        assert service.valid?
+        assert_predicate service, :valid?
         assert_equal "20000", service.result
         assert_equal "20000", Rails.cache.read("pricing/#{period}/#{hotel}/#{room}")
       end
