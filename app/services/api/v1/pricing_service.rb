@@ -35,20 +35,20 @@ module Api::V1
       cached_rate = Rails.cache.read(cache_key)
       return false unless cached_rate
 
-      Rails.logger.info "[PricingService] Cache hit for key=#{cache_key}"
+      log_event(:info, "cache_hit", key: cache_key)
       @result = cached_rate
       true
     rescue StandardError => e
-      Rails.logger.error "[PricingService] Cache read failed for key=#{cache_key}: #{e.message}"
+      log_event(:error, "cache_read_failed", key: cache_key, error: e.message)
       false
     end
 
     def call_api(cache_key)
-      Rails.logger.info "[PricingService] Cache miss for key=#{cache_key}, fetching from API"
+      log_event(:info, "cache_miss", key: cache_key)
       RateApiClient.get_rate(period: @period, hotel: @hotel, room: @room)
     rescue StandardError => e
       errors << "Could not reach the pricing model: #{e.message}"
-      Rails.logger.error "[PricingService] Network error: #{e.message} (key=#{cache_key})"
+      log_event(:error, "api_unreachable", key: cache_key, error: e.message)
       nil
     end
 
@@ -56,14 +56,14 @@ module Api::V1
       parsed_rate = parse_json_object(rate.body)
       if parsed_rate.nil?
         errors << "Pricing model returned an unexpected response"
-        Rails.logger.error "[PricingService] Unparseable success response (key=#{cache_key})"
+        log_event(:error, "unparseable_response", key: cache_key)
         return
       end
 
       @result = extract_rate(parsed_rate)
       if @result.nil?
         errors << "No rate found for the given parameters"
-        Rails.logger.error "[PricingService] No matching rate in response (key=#{cache_key})"
+        log_event(:error, "no_matching_rate", key: cache_key)
         return
       end
 
@@ -74,7 +74,7 @@ module Api::V1
       parsed = parse_json_object(rate.body)
       message = parsed&.dig("error") || "Pricing model returned an error"
       errors << message
-      Rails.logger.error "[PricingService] API error: #{message} (key=#{cache_key})"
+      log_event(:error, "api_error", key: cache_key, message: message)
     end
 
     # Finds the rate matching our parameters. Guards every step so a response
@@ -91,9 +91,9 @@ module Api::V1
     # A cache write failure must not fail the request — we already have the rate.
     def store_in_cache(cache_key)
       Rails.cache.write(cache_key, @result, expires_in: CACHE_TTL)
-      Rails.logger.info "[PricingService] Cached rate for key=#{cache_key}, expires_in=#{CACHE_TTL}"
+      log_event(:info, "cache_write", key: cache_key, ttl: CACHE_TTL.to_i)
     rescue StandardError => e
-      Rails.logger.error "[PricingService] Cache write failed for key=#{cache_key}: #{e.message}"
+      log_event(:error, "cache_write_failed", key: cache_key, error: e.message)
     end
 
     # Parses a JSON body and returns it only if it is a JSON object (Hash).
@@ -104,6 +104,14 @@ module Api::V1
       parsed.is_a?(Hash) ? parsed : nil
     rescue JSON::ParserError
       nil
+    end
+
+    # Emits a structured (logfmt-style) log line, e.g.
+    #   [PricingService] event=cache_hit key="pricing/Summer/.../..."
+    # Values are quoted so fields with spaces stay parseable by log tooling.
+    def log_event(level, event, **fields)
+      pairs = fields.map { |key, value| "#{key}=#{value.to_s.inspect}" }
+      Rails.logger.public_send(level, "[PricingService] event=#{event} #{pairs.join(' ')}".strip)
     end
   end
 end

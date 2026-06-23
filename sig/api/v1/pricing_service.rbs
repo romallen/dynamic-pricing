@@ -19,6 +19,8 @@ module Api
       def extract_rate: (Hash[String, untyped] parsed_rate) -> String?
       def store_in_cache: (String cache_key) -> void
       def handle_error: (untyped rate, String cache_key) -> void
+      def parse_json_object: (String body) -> Hash[String, untyped]?
+      def log_event: (Symbol level, String event, **untyped fields) -> void
     end
   end
 end
