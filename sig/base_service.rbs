@@ -1,0 +1,8 @@
+# Type signature for the base service class.
+# All service objects inherit from this and get result/errors tracking for free.
+class BaseService
+  attr_accessor result: String?
+
+  def valid?: () -> bool
+  def errors: () -> Array[String]
+end

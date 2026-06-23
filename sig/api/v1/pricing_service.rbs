@@ -1,0 +1,22 @@
+# Type signature for the main service class.
+# run fetches a rate (from cache or the external API) and sets result.
+# Callers check valid? to know whether result is usable or errors has details.
+module Api
+  module V1
+    class PricingService < BaseService
+      CACHE_TTL: ActiveSupport::Duration
+
+      def initialize: (period: String, hotel: String, room: String) -> void
+      def run: () -> void
+
+      private
+
+      def serve_from_cache?: (String cache_key) -> bool
+      def call_api: (String cache_key) -> untyped?
+      def handle_success: (untyped rate, String cache_key) -> void
+      def extract_rate: (Hash[String, untyped] parsed_rate) -> String?
+      def store_in_cache: (String cache_key) -> void
+      def handle_error: (untyped rate, String cache_key) -> void
+    end
+  end
+end

@@ -1,0 +1,6 @@
+# Type signature for the external rate API HTTP client.
+# get_rate posts to the pricing model and returns an HTTParty response.
+# Callers check success? on the response and parse body as JSON on success.
+class RateApiClient
+  def self.get_rate: (period: String, hotel: String, room: String) -> untyped
+end
