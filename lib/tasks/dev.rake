@@ -1,5 +1,5 @@
-COMPOSE = "docker compose"
-APP     = "interview-dev"
+COMPOSE = "docker compose".freeze
+APP     = "interview-dev".freeze
 
 namespace :docker do
   desc "Build the Docker image"

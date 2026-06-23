@@ -8,10 +8,10 @@ module RateApiHelpers
   VALID_ROOMS   = %w[SingletonRoom BooleanTwin RestfulKing].freeze
 
   # Sensible defaults so individual tests only have to specify what they care about.
-  DEFAULT_PERIOD = "Summer"
-  DEFAULT_HOTEL  = "FloatingPointResort"
-  DEFAULT_ROOM   = "SingletonRoom"
-  DEFAULT_RATE   = "15000"
+  DEFAULT_PERIOD = "Summer".freeze
+  DEFAULT_HOTEL  = "FloatingPointResort".freeze
+  DEFAULT_ROOM   = "SingletonRoom".freeze
+  DEFAULT_RATE   = "15000".freeze
 
   # Builds a fake HTTP response that looks like a successful rate API reply.
   # The body is a JSON string — matching what HTTParty actually returns.
@@ -31,13 +31,13 @@ module RateApiHelpers
 
   # Stubs RateApiClient.get_rate for the duration of the block.
   # Pass any object as `response` — an OpenStruct, a lambda, etc.
-  def stub_rate_api(response, &block)
-    RateApiClient.stub(:get_rate, response, &block)
+  def stub_rate_api(response, &)
+    RateApiClient.stub(:get_rate, response, &)
   end
 
   # Stubs RateApiClient.get_rate to raise a network-level error.
-  def stub_rate_api_down(message: "connection refused", &block)
-    RateApiClient.stub(:get_rate, ->(**) { raise StandardError, message }, &block)
+  def stub_rate_api_down(message: "connection refused", &)
+    RateApiClient.stub(:get_rate, ->(**) { raise StandardError, message }, &)
   end
 
   # Instantiates PricingService, calls run, and returns the service object.
