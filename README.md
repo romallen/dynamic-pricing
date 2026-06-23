@@ -4,28 +4,41 @@
 
 # Dynamic Pricing Proxy — Solution
 
-A Rails API service that proxies an expensive dynamic-pricing model and caches
-each rate for its 5-minute validity window, so repeated requests are served
-without re-hitting the rate-limited upstream API.
+A Rails API that fronts an expensive pricing model and caches each rate for the
+5 minutes it stays valid. Fetch a price for a given period/hotel/room once, and
+everyone asking for the same thing in the next 5 minutes gets that cached answer
+instead of another upstream call.
 
 ## Quick Start
 
+The `docker:*` rake tasks wrap `docker compose` and run from the host (outside
+the container). Run `rake -T docker` to see the full list.
+
 ```bash
-# Build and start both services (Rails app + rate-api)
-docker compose up -d --build
+# Build the image and start both services (Rails app + rate-api)
+rake docker:build
+rake docker:start
 
 # Hit the endpoint
 curl 'http://localhost:3000/api/v1/pricing?period=Summer&hotel=FloatingPointResort&room=SingletonRoom'
 
-# Run the test suite
-docker compose exec interview-dev ./bin/rails test
+# Run the tests
+rake docker:test
 
-# Lint and type-check (also available as rake docker:lint / rake docker:typecheck)
-docker compose exec interview-dev bundle exec rubocop
-docker compose exec interview-dev bundle exec rbs -I sig validate
+# Lint and type-check
+rake docker:lint
+rake docker:typecheck
+
+# Tail logs, open a console or a shell when you need them
+rake docker:logs
+rake docker:console
+rake docker:shell
+
+# Stop everything
+rake docker:stop
 ```
 
-**Valid parameter values:**
+The endpoint takes three parameters, each with a fixed set of valid values:
 
 | Parameter | Options |
 |-----------|---------|
@@ -35,102 +48,111 @@ docker compose exec interview-dev bundle exec rbs -I sig validate
 
 ---
 
-## Design Decisions
+## How I thought about it
 
-### The problem
+### The constraints
 
-The [rate-api Docker Hub docs](https://hub.docker.com/r/tripladev/rate-api) document two hard constraints:
+Two numbers from the [rate-api docs](https://hub.docker.com/r/tripladev/rate-api)
+shaped everything: 1,000 calls/day on a single token, and a rate that's valid for
+5 minutes. The service has to serve 10,000+ requests/day. Without caching, the
+quota is gone in about two minutes — so the cache is the point of the exercise.
 
-1. **1,000 API calls per day** per token before the quota is exhausted (resets on container restart).
-2. A fetched rate is **valid for up to 5 minutes**, so re-fetching sooner than that wastes a call with no benefit.
+### What I built
 
-Our service needs to handle **10,000+ user requests/day**. Without caching, every request consumes one API call — the daily quota would be gone in under two minutes.
+The caching lives in `PricingService`. On each request I build a cache key from
+`period/hotel/room`, read `Rails.cache`, and return the hit if it's there. On a
+miss I call the rate-api, write the result with a 5-minute TTL, and return it.
 
-### The solution: in-memory caching with a 5-minute TTL
+It's a lazy cache — entries appear the first time something is asked for, nothing
+is pre-warmed. I never cache errors, so a failed call retries cleanly next time
+instead of pinning a failure in the cache for 5 minutes.
 
-The caching layer lives inside `PricingService` and uses `Rails.cache.read` / `Rails.cache.write`. The flow is:
+The cache key is just interpolated param values. That's safe here because the
+controller validates all three params against fixed allowlists before the service
+runs, so keys can't collide or be injected.
 
-1. Build a cache key from `period/hotel/room` (e.g. `pricing/Summer/FloatingPointResort/SingletonRoom`).
-2. Call `Rails.cache.read(cache_key)`. If a fresh entry (< 5 min old) exists, return it immediately — **no API call**.
-3. On a cache miss, call the rate-api, store the result with `expires_in: 5.minutes`, then return it.
+### Why MemoryStore
 
-This is a **lazy cache** (populated on demand, not pre-warmed). Errors are never written to the cache, so a transient API failure retries immediately on the next request rather than serving stale error state.
+`MemoryStore` ships with Rails, needs no extra services, and is thread-safe, so it
+holds up fine under Puma's threads. The catch is it's per-process and dies on
+restart — but rates only live 5 minutes, so a restart costs at most one extra call
+per combination. Redis would matter if this ran on more than one instance; for a
+single instance it's just ops overhead. If this needed to scale out, swapping the
+store for `:redis_cache_store` is the only change — the service code wouldn't move.
 
-### Why `Rails.cache` with `MemoryStore`?
+### Does it stay under budget?
 
-| Option | Pros | Cons |
-|--------|------|------|
-| `MemoryStore` (chosen) | Zero extra dependencies, built into Rails, simple | Cache lost on process restart |
-| `FileStore` | Persists across restarts, still no extra deps | Slower (disk I/O per request) |
-| Redis | Fast, persistent, shareable across instances | Requires extra service, gem, and ops work |
+Yes, with room to spare. There are only 36 possible combinations, and a warm key
+needs at most one call every 5 minutes. Spread 10,000 requests across 36 keys and
+you're nowhere near 1,000 calls/day — and real traffic skews toward a handful of
+popular combinations that just stay hot.
 
-`MemoryStore` is the right call here. Rates are only valid for 5 minutes, so losing the cache on a restart costs at most one extra API call per combination — the service recovers on the very next request. Adding Redis would introduce meaningful operational complexity with no benefit for a single-instance deployment.
+The honest gap: on a cold key, concurrent requests can all miss and call the API
+before the first one writes the cache (a cache stampede). With 36 keys and a
+5-minute TTL it never threatens the budget, so I documented it instead of adding a
+lock — and an in-process lock wouldn't help across processes anyway. The real fix
+would be `race_condition_ttl` or a shared lock once there's a shared cache.
 
-### Throughput math
+### When things go wrong
 
-- **API budget:** 1,000 calls/day
-- **Cache TTL:** 5 minutes → at most **288 refresh windows/day** per combination
-- **Unique combinations:** 4 periods × 3 hotels × 3 rooms = **36**
+The docs don't define an error format, so the service handles failure without ever
+returning a 500:
 
-If all 36 combinations were requested continuously and evenly, worst-case API usage is 288 × 36 = 10,368 calls/day — over budget. But this represents a pathological scenario where every combination is requested at exactly the cache boundary every 5 minutes, all day. In practice:
+- **Can't reach the API** (timeout, refused) → 400 with a clear message.
+- **API returns an error status** → pull `error` from the body, fall back to a
+  generic message if the body is missing, not JSON, or not an object.
+- **200 with a weird body** (valid JSON but wrong shape, `null`, an array, no
+  `rates`) → 400 instead of a crash.
+- **No matching rate in the response** → 400, not a silent nil.
+- **Cache read/write fails** → logged and treated as best-effort; the request
+  still answers from the API.
 
-- Traffic is skewed. A small number of popular combinations dominate and stay warm in the cache continuously.
-- At 10,000 user requests/day spread across 36 combos, each combo receives ~278 requests. With a 5-minute TTL, those 278 requests require **at most 12 API calls/hour** per combo (one per window) — well within the 1,000/day total budget.
+None of these get cached, so the next request always gets a clean retry.
 
-The service comfortably handles the throughput requirements under any realistic traffic distribution.
+### Observability
 
-**Known limitation — cache stampede:** on a cache miss, concurrent requests for
-the same key each call the API before the first writes the cache. With only 36
-combinations and a 5-minute TTL this stays within budget, so a single-flight
-lock was intentionally omitted (an in-process lock would also be ineffective
-across multiple processes). It's documented rather than solved by design.
+Cache and failure paths emit structured, logfmt-style lines so they're easy to
+grep and parse:
 
-### Error handling
+```
+[PricingService] event=cache_miss key="pricing/Summer/FloatingPointResort/SingletonRoom"
+[PricingService] event=cache_write key="pricing/Summer/FloatingPointResort/SingletonRoom" ttl="300"
+[PricingService] event=api_unreachable key="..." error="connection refused"
+```
 
-The rate-api docs do not specify an error response format, so the service handles all failure modes defensively and **never returns a 500 for a bad upstream response**:
-
-- **Network error** (timeout, connection refused): returns a descriptive 400.
-- **API error response** (non-2xx): parses `{ "error": "..." }` from the body; falls back to a generic message if the body is missing, not JSON, or not an object.
-- **Malformed / wrong-shape success body**: a 200 that is valid JSON but the wrong shape (no `rates` array, `null`, a JSON array, etc.) degrades to a 400 instead of crashing.
-- **Rate found but no match**: a successful response without a matching rate returns a 400 rather than silently serving a `nil` rate.
-- **Cache is best-effort**: a cache read/write failure is logged and the request still completes against the API.
-
-In all error cases, nothing is written to the cache — the next request retries the API fresh.
+That makes cache hit-rate something you can actually compute from logs, and gives
+you obvious events (`api_unreachable`, `api_error`) to alert on. There's also a
+`GET /up` liveness endpoint for load balancers and uptime checks.
 
 ---
 
 ## Assumptions
 
-- A failed API call returns an error to the user immediately. Stale cached data is **never** served — an outdated rate could cause incorrect pricing, which is worse than a temporary error.
-- The valid values for `period`, `hotel`, and `room` are fixed (as defined in the scaffold).
-- Single-instance deployment. `MemoryStore` is not shared across multiple processes; a multi-process or multi-host deployment would need a shared cache (e.g. Redis).
-- The 1,000/day quota resets when the `rate-api` Docker container is restarted (per the Docker Hub docs). In production, assume the quota is a hard rolling-24-hour limit.
+- Better to return an error than serve a stale price — a wrong rate means charging
+  the wrong amount, which is worse than a brief failure.
+- The valid values for `period`, `hotel`, and `room` are fixed by the scaffold.
+- Single instance. `MemoryStore` isn't shared across processes, so a multi-process
+  or multi-host setup would need a shared cache like Redis.
+- The 1,000/day quota resets when the rate-api container restarts (per the docs);
+  in production I'd treat it as a hard rolling-24-hour limit.
 
 ---
 
-## Project scope
+## Tests, linting, types
 
-This is a stateless proxy, so the unused Rails scaffold was removed to keep the
-surface small and the intent clear: no ActiveRecord/SQLite/database, no
-ActionCable, no ActiveJob. The app runs as a true API-only Rails service.
+- **Tests** — `rake docker:test`. Shared mocking helpers are in
+  `test/support/rate_api_helpers.rb`; coverage runs from cache hit/miss and TTL
+  expiry through network failures and malformed responses.
+- **Linting** — RuboCop with the Rails, Minitest, and Performance cops: `rake docker:lint`.
+- **Types** — RBS signatures in `sig/`, checked with `rake docker:typecheck`.
 
----
-
-## Code Quality
-
-- **Tests** — `docker compose exec interview-dev ./bin/rails test`. Shared mocking helpers live in `test/support/rate_api_helpers.rb`; coverage includes cache hit/miss, TTL expiry, network failures, and malformed/wrong-shape responses.
-- **Linter** — [RuboCop](https://rubocop.org) with the `rubocop-rails`, `rubocop-minitest`, and `rubocop-performance` extensions: `rake docker:lint`.
-- **Type signatures** — RBS signatures in `sig/` document the public interface; validate with `rake docker:typecheck`.
+I also stripped the unused Rails scaffold — no ActiveRecord/SQLite, ActionCable, or
+ActiveJob. It's a stateless proxy, so none of that was pulling weight.
 
 ---
 
-## AI Assistance
+## AI assistance
 
-This solution was developed with Claude Code (Anthropic) as an AI coding assistant. Claude was used for:
-
-- Exploring the existing scaffold and rate-api Docker Hub documentation
-- Designing the caching strategy and tradeoff analysis
-- Writing the implementation across `PricingService` and the test suite
-- Setting up RuboCop, RBS type signatures, and trimming unused scaffold
-
-All code was reviewed and understood before submission. The design choices and tradeoffs above reflect my own reasoning.
+I used Claude Code (Anthropic) while building this — for exploring the scaffold and
+the rate-api docs, working through the caching tradeoffs, and writing the
+implementation and tests. I understand every line and the reasoning here is mine.
