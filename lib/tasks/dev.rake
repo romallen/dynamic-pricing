@@ -44,4 +44,19 @@ namespace :docker do
   task :test do
     sh "#{COMPOSE} exec #{APP} ./bin/rails test"
   end
+
+  desc "Run the RuboCop linter inside the container"
+  task :lint do
+    sh "#{COMPOSE} exec #{APP} bundle exec rubocop"
+  end
+
+  desc "Auto-correct RuboCop offenses inside the container"
+  task :lint_fix do
+    sh "#{COMPOSE} exec #{APP} bundle exec rubocop --autocorrect"
+  end
+
+  desc "Validate RBS type signatures inside the container"
+  task :typecheck do
+    sh "#{COMPOSE} exec #{APP} bundle exec rbs -I sig validate"
+  end
 end

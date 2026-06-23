@@ -4,7 +4,9 @@
 module Api
   module V1
     class PricingService < BaseService
-      CACHE_TTL: ActiveSupport::Duration
+      # ActiveSupport::Duration — typed as untyped to keep `rbs validate`
+      # self-contained without pulling in the full Rails type collection.
+      CACHE_TTL: untyped
 
       def initialize: (period: String, hotel: String, room: String) -> void
       def run: () -> void
