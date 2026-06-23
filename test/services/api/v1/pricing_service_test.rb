@@ -158,6 +158,48 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
     end
   end
 
+  # A 200 response whose body is valid JSON but the wrong shape must NOT crash
+  # the service (which would surface as a 500). It should degrade to a 400.
+  [
+    [%({"error":"internal"}), "well-formed JSON object with no rates key"],
+    [%({}),                   "empty JSON object"],
+    [%({"rates":null}),       "rates key present but null"],
+    [%({"rates":"oops"}),     "rates key is a string, not an array"]
+  ].each do |body, description|
+    test "success response with wrong shape (#{description}): no rate found, no crash" do
+      stub_rate_api(OpenStruct.new(success?: true, body: body)) do
+        service = run_pricing_service
+
+        assert_not service.valid?
+        assert_includes service.errors.first, "No rate found"
+      end
+    end
+  end
+
+  test "success response that is valid JSON but not an object: unexpected response" do
+    stub_rate_api(OpenStruct.new(success?: true, body: "[]")) do
+      service = run_pricing_service
+
+      assert_not service.valid?
+      assert_includes service.errors.first, "unexpected response"
+    end
+  end
+
+  # An error response whose body is valid non-object JSON must not crash either.
+  [
+    [%(null), "null body"],
+    [%([]),   "JSON array body"]
+  ].each do |body, description|
+    test "error response with #{description}: uses fallback message, no crash" do
+      stub_rate_api(OpenStruct.new(success?: false, body: body)) do
+        service = run_pricing_service
+
+        assert_not service.valid?
+        assert_includes service.errors.first, "Pricing model returned an error"
+      end
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Data-driven: spot-check several valid param combinations
   # ---------------------------------------------------------------------------
