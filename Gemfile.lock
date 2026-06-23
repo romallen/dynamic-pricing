@@ -249,10 +249,6 @@ GEM
       rubocop-ast (>= 1.44.0, < 2.0)
     ruby-progressbar (1.13.0)
     securerandom (0.4.1)
-    sqlite3 (2.7.3-aarch64-linux-musl)
-    sqlite3 (2.7.3-arm64-darwin)
-    sqlite3 (2.7.3-x86_64-darwin)
-    sqlite3 (2.7.3-x86_64-linux-musl)
     stringio (3.1.7)
     thor (1.4.0)
     timeout (0.6.1)
@@ -286,7 +282,6 @@ DEPENDENCIES
   rubocop-minitest
   rubocop-performance
   rubocop-rails
-  sqlite3 (>= 1.4)
   tzinfo-data
 
 RUBY VERSION
