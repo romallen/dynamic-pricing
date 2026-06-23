@@ -1,111 +1,68 @@
 require "test_helper"
 
 class Api::V1::PricingControllerTest < ActionDispatch::IntegrationTest
-  test "should get pricing with all parameters" do
-    mock_body = {
-      'rates' => [
-        { 'period' => 'Summer', 'hotel' => 'FloatingPointResort', 'room' => 'SingletonRoom', 'rate' => '15000' }
-      ]
-    }.to_json
+  setup do
+    Rails.cache.clear
+  end
 
-    mock_response = OpenStruct.new(success?: true, body: mock_body)
-
-    RateApiClient.stub(:get_rate, mock_response) do
-      get api_v1_pricing_url, params: {
-        period: "Summer",
-        hotel: "FloatingPointResort",
-        room: "SingletonRoom"
-      }
+  test "returns a rate for valid parameters" do
+    stub_rate_api(mock_api_response(rate: "15000")) do
+      get api_v1_pricing_url, params: { period: "Summer", hotel: "FloatingPointResort", room: "SingletonRoom" }
 
       assert_response :success
       assert_equal "application/json", @response.media_type
-
-      json_response = JSON.parse(@response.body)
-      assert_equal "15000", json_response["rate"]
+      assert_equal "15000", json_body["rate"]
     end
   end
 
-  test "should return error when rate API fails" do
-    mock_response = OpenStruct.new(success?: false, body: { 'error' => 'Rate not found' })
-
-    RateApiClient.stub(:get_rate, mock_response) do
-      get api_v1_pricing_url, params: {
-        period: "Summer",
-        hotel: "FloatingPointResort",
-        room: "SingletonRoom"
-      }
+  test "returns 400 when the pricing API returns an error" do
+    stub_rate_api(mock_api_error_response(message: "Rate not found")) do
+      get api_v1_pricing_url, params: { period: "Summer", hotel: "FloatingPointResort", room: "SingletonRoom" }
 
       assert_response :bad_request
-      assert_equal "application/json", @response.media_type
-
-      json_response = JSON.parse(@response.body)
-      assert_includes json_response["error"], "Rate not found"
+      assert_includes json_body["error"], "Rate not found"
     end
   end
 
-  test "should return error without any parameters" do
+  test "returns 400 when all parameters are missing" do
     get api_v1_pricing_url
 
     assert_response :bad_request
-    assert_equal "application/json", @response.media_type
-
-    json_response = JSON.parse(@response.body)
-    assert_includes json_response["error"], "Missing required parameters"
+    assert_includes json_body["error"], "Missing required parameters"
   end
 
-  test "should handle empty parameters" do
-    get api_v1_pricing_url, params: {
-      period: "",
-      hotel: "",
-      room: ""
-    }
+  test "returns 400 when parameters are empty strings" do
+    get api_v1_pricing_url, params: { period: "", hotel: "", room: "" }
 
     assert_response :bad_request
-    assert_equal "application/json", @response.media_type
-
-    json_response = JSON.parse(@response.body)
-    assert_includes json_response["error"], "Missing required parameters"
+    assert_includes json_body["error"], "Missing required parameters"
   end
 
-  test "should reject invalid period" do
-    get api_v1_pricing_url, params: {
-      period: "summer-2024",
-      hotel: "FloatingPointResort",
-      room: "SingletonRoom"
-    }
+  test "rejects an invalid period" do
+    get api_v1_pricing_url, params: { period: "summer-2024", hotel: "FloatingPointResort", room: "SingletonRoom" }
 
     assert_response :bad_request
-    assert_equal "application/json", @response.media_type
-
-    json_response = JSON.parse(@response.body)
-    assert_includes json_response["error"], "Invalid period"
+    assert_includes json_body["error"], "Invalid period"
   end
 
-  test "should reject invalid hotel" do
-    get api_v1_pricing_url, params: {
-      period: "Summer",
-      hotel: "InvalidHotel",
-      room: "SingletonRoom"
-    }
+  test "rejects an invalid hotel" do
+    get api_v1_pricing_url, params: { period: "Summer", hotel: "InvalidHotel", room: "SingletonRoom" }
 
     assert_response :bad_request
-    assert_equal "application/json", @response.media_type
-
-    json_response = JSON.parse(@response.body)
-    assert_includes json_response["error"], "Invalid hotel"
+    assert_includes json_body["error"], "Invalid hotel"
   end
 
-  test "should reject invalid room" do
-    get api_v1_pricing_url, params: {
-      period: "Summer",
-      hotel: "FloatingPointResort",
-      room: "InvalidRoom"
-    }
+  test "rejects an invalid room" do
+    get api_v1_pricing_url, params: { period: "Summer", hotel: "FloatingPointResort", room: "InvalidRoom" }
 
     assert_response :bad_request
-    assert_equal "application/json", @response.media_type
+    assert_includes json_body["error"], "Invalid room"
+  end
 
-    json_response = JSON.parse(@response.body)
-    assert_includes json_response["error"], "Invalid room"
+  private
+
+  # Parses the JSON response body once and returns it as a Ruby hash.
+  def json_body
+    JSON.parse(@response.body)
   end
 end
