@@ -1,5 +1,7 @@
 module Api::V1
   class PricingService < BaseService
+    CACHE_TTL = 5.minutes
+
     def initialize(period:, hotel:, room:)
       @period = period
       @hotel = hotel
@@ -7,13 +9,39 @@ module Api::V1
     end
 
     def run
-      # TODO: Start to implement here
+      cache_key = "pricing/#{@period}/#{@hotel}/#{@room}"
+
+      cached_rate = Rails.cache.read(cache_key)
+      if cached_rate
+        @result = cached_rate
+        return
+      end
+
+      begin
       rate = RateApiClient.get_rate(period: @period, hotel: @hotel, room: @room)
+      rescue StandardError => e
+        errors << "Could not reach the pricing model: #{e.message}"
+        return
+      end
+
       if rate.success?
+        begin
         parsed_rate = JSON.parse(rate.body)
+        rescue JSON::ParserError
+          errors << "Pricing model returned an unexpected response"
+          return
+        end
+
         @result = parsed_rate['rates'].detect { |r| r['period'] == @period && r['hotel'] == @hotel && r['room'] == @room }&.dig('rate')
+
+        Rails.cache.write(cache_key, @result, expires_in: CACHE_TTL)
       else
-        errors << rate.body['error']
+        begin
+          parsed_error = JSON.parse(rate.body)
+          errors << (parsed_error['error'] || "Pricing model returned an error")
+        rescue JSON::ParserError
+          errors << "Pricing model returned an error"
+        end
       end
     end
   end
