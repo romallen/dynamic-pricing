@@ -115,10 +115,10 @@ GEM
     drb (2.2.3)
     erb (6.0.1.1)
     erubi (1.13.1)
-    ffi (1.17.2-aarch64-linux-musl)
-    ffi (1.17.2-arm64-darwin)
-    ffi (1.17.2-x86_64-darwin)
-    ffi (1.17.2-x86_64-linux-musl)
+    ffi (1.17.4-aarch64-linux-musl)
+    ffi (1.17.4-arm64-darwin)
+    ffi (1.17.4-x86_64-darwin)
+    ffi (1.17.4-x86_64-linux-musl)
     globalid (1.2.1)
       activesupport (>= 6.1)
     google-protobuf (4.35.1-aarch64-linux-musl)
@@ -150,7 +150,8 @@ GEM
     json (2.20.0)
     language_server-protocol (3.17.0.5)
     lint_roller (1.1.0)
-    listen (3.9.0)
+    listen (3.10.0)
+      logger
       rb-fsevent (~> 0.10, >= 0.10.3)
       rb-inotify (~> 0.9, >= 0.9.10)
     logger (1.7.0)
@@ -510,7 +511,7 @@ DEPENDENCIES
   debug
   dotenv-rails
   httparty
-  listen (~> 3.3)
+  listen (~> 3.10)
   lograge
   opentelemetry-exporter-otlp
   opentelemetry-exporter-otlp-metrics
