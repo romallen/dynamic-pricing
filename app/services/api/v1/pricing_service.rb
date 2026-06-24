@@ -19,7 +19,12 @@ module Api::V1
         resolve_from_api(cache_key)
       end
 
-      log_event(:info, "cache_hit", key: cache_key) if @result && hit
+      if @result && hit
+        log_event(:info, "cache_hit", key: cache_key)
+        Telemetry.record_cache("hit")
+      else
+        Telemetry.record_cache("miss")
+      end
     rescue StandardError => e
       log_event(:error, "cache_read_failed", key: cache_key, error: e.message)
     end
@@ -34,11 +39,19 @@ module Api::V1
     end
 
     def call_api(cache_key)
-      RateApiClient.get_rate(period: @period, hotel: @hotel, room: @room)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      rate = RateApiClient.get_rate(period: @period, hotel: @hotel, room: @room)
+      Telemetry.record_upstream(duration_s: elapsed_since(started), error: false)
+      rate
     rescue StandardError => e
+      Telemetry.record_upstream(duration_s: elapsed_since(started), error: true)
       errors << "Could not reach the pricing model: #{e.message}"
       log_event(:error, "api_unreachable", key: cache_key, error: e.message)
       nil
+    end
+
+    def elapsed_since(started)
+      Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
     end
 
     def handle_success(rate, cache_key)

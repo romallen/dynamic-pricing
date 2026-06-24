@@ -26,6 +26,15 @@ gem "bootsnap", require: false
 # HTTP client for external API call
 gem "httparty"
 
+# Telemetry — OpenTelemetry traces + metrics. All loaded with require: false and
+# activated only by config/initializers/opentelemetry.rb when OTEL_ENABLED=true,
+# so a default boot pulls in none of it. Metrics gems are still beta upstream.
+gem "opentelemetry-sdk", require: false
+gem "opentelemetry-instrumentation-all", require: false
+gem "opentelemetry-exporter-otlp", require: false
+gem "opentelemetry-metrics-sdk", require: false
+gem "opentelemetry-exporter-otlp-metrics", require: false
+
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 # gem "rack-cors"
 
