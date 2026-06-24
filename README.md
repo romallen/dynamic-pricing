@@ -30,9 +30,9 @@ curl 'http://localhost:3000/api/v1/pricing?period=Summer&hotel=FloatingPointReso
 
 rate-api gives 1,000 calls/day. The service needs to handle 10,000+. Without a cache, the quota is gone after the first 10% of traffic.
 
-Requests hit `PricingController` (validates params against fixed allowlists) then `PricingService`. The service calls `Rails.cache.fetch` with a 5-minute TTL. Cache hit returns immediately. On a miss, it calls rate-api, caches the result, and returns it. `race_condition_ttl: 5` prevents expiry stampedes. `skip_nil: true` means errors never get cached — a failed call returns a 400 and the next request retries fresh.
+Requests hit `PricingController` (validates params against fixed allowlists) then `PricingService`. The service calls `Rails.cache.fetch` with a 5-minute TTL. Cache hit returns immediately. On a miss, it calls rate-api, caches the result, and returns it. `race_condition_ttl: 5` prevents expiry stampedes. `skip_nil: true` means errors never get cached. A failed call returns a 400, and the next request retries fresh.
 
-**Why MemoryStore:** ships with Rails, no extra services needed. The cache resets on restart, but with a 5-minute TTL that costs at most one extra API call per combination. Scaling to multiple hosts means swapping to `:redis_cache_store` — `PricingService` doesn't change.
+**Why Redis:** Puma runs multiple worker processes, each with its own memory. MemoryStore means each worker has a separate cache. A cache miss in worker 2 hits rate-api even if worker 1 just cached the same key. Redis is a single shared store, so a cached value is visible to all workers immediately. The cache also survives app restarts, which reduces cold-start load. `PricingService` calls `Rails.cache.fetch` and doesn't care what's behind it. Swapping the store is a config change.
 
 ---
 
@@ -46,7 +46,7 @@ Requests hit `PricingController` (validates params against fixed allowlists) the
 {"service":"PricingService","event":"api_unreachable","key":"...","error":"connection refused"}
 ```
 
-**Traces and metrics.** OpenTelemetry is off by default — set `OTEL_ENABLED=true` in `.env` to turn it on. `TelemetryMiddleware` wraps every request in an `http.request` span with auto-instrumented child spans for Rails routing and the Net::HTTP call to rate-api. All endpoints get traces and metrics automatically. Four metrics: `http.server.requests`, `http.server.duration`, `pricing.cache.requests`, `pricing.upstream.duration`.
+**Traces and metrics.** OpenTelemetry is off by default. Set `OTEL_ENABLED=true` in `.env` to turn it on. `TelemetryMiddleware` wraps every request in an `http.request` span with auto-instrumented child spans for Rails routing and the Net::HTTP call to rate-api. All endpoints get traces and metrics automatically. Four metrics: `http.server.requests`, `http.server.duration`, `pricing.cache.requests`, `pricing.upstream.duration`.
 
 | Var | Default | What it does |
 |-----|---------|--------------|
@@ -69,14 +69,12 @@ rake docker:typecheck  # RBS signatures
 
 ## Production readiness
 
-Things added beyond the core caching requirement:
-
-- **HTTP timeout.** `default_timeout 3` on the HTTParty client. A slow rate-api response can't tie up a Puma thread indefinitely. Raises `Net::ReadTimeout`, caught and returned as a 400.
+- **HTTP timeout.** `default_timeout 15` on the HTTParty client. A slow rate-api response can't tie up a Puma thread indefinitely. Raises `Net::ReadTimeout`, caught and returned as a 400.
 - **Stampede protection.** `race_condition_ttl: 5` on every `cache.fetch`. When a key expires under load, one thread regenerates it while the rest briefly serve the stale value.
 - **Error isolation.** `skip_nil: true` means failed and malformed API responses are never written to the cache. The next request always gets a fresh attempt.
-- **Input validation.** Controller validates all three params against fixed allowlists before the service runs. Invalid params return 400 immediately — nothing reaches the cache or the upstream.
-- **Structured JSON logging.** `lograge` replaces Rails' multi-line request logs with a single JSON line per request. Service events (cache hit/miss, upstream errors) also emit JSON. Both are Elastic/Datadog-compatible out of the box — any collector reading Docker stdout can ingest them.
-- **OpenTelemetry.** Traces and metrics via `TelemetryMiddleware`. Off by default, zero overhead when disabled. Covers all endpoints automatically — no per-controller instrumentation needed.
+- **Input validation.** Controller validates all three params against fixed allowlists before the service runs. Invalid params return 400 immediately. Nothing reaches the cache or the upstream.
+- **Structured JSON logging.** `lograge` replaces Rails' multi-line request logs with a single JSON line per request. Service events (cache hit/miss, upstream errors) also emit JSON. Both are Elastic/Datadog-compatible. Any collector reading Docker stdout picks them up.
+- **OpenTelemetry.** Traces and metrics via `TelemetryMiddleware`. Off by default, zero overhead when disabled. Covers all endpoints automatically. No per-controller instrumentation needed.
 - **CI.** GitHub Actions runs tests, lint, and type checks on every push.
 - **Dependabot.** Weekly automated PRs for gem, Docker, and Actions updates.
 - **Secrets management.** `.env` for local dev. `config/initializers/secrets.rb` loads from AWS Secrets Manager in production when `SECRETS_ARN` is set.
@@ -85,7 +83,6 @@ Things added beyond the core caching requirement:
 
 ## Future improvements
 
-- **Shared cache.** Swap MemoryStore for Redis or Valkey. Required for multi-host deployments or multiple Puma workers sharing state. `PricingService` doesn't change.
 - **Circuit breaker.** If rate-api goes down, every cache miss hammers it. A circuit breaker (e.g. `stoplight`) opens after N consecutive failures and short-circuits during a cooldown window.
 - **Quota tracking.** Rolling counter of upstream calls with an alert at ~80% of the 1,000/day cap. You want to know before requests start failing, not after.
 - **Telemetry backend.** The app emits JSON logs, OTel traces, and OTel metrics. Production needs a collector (Filebeat/Fluentd for logs, OTel Collector for traces/metrics) and dashboards — cache hit rate, upstream latency, error rate. Grafana/Tempo or Datadog both work with OTLP.
@@ -95,4 +92,4 @@ Things added beyond the core caching requirement:
 
 ## AI assistance
 
-Ruby isn't my primary language, so I leaned on Claude Code to move faster — syntax, idioms, Rails conventions. I directed the design decisions and architecture, and I own the approach.
+Ruby isn't my primary language. I leaned on Claude Code for syntax, idioms, and Rails conventions. I directed the design. The code is mine.

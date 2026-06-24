@@ -1,14 +1,8 @@
-# Thin wrapper over the OpenTelemetry API so business code can emit spans and
-# metrics unconditionally. When OTEL_ENABLED is false the SDK is never loaded,
-# `OpenTelemetry` is undefined, and every method here is a cheap no-op.
-#
-# Traces and metrics degrade independently: if the (beta) metrics SDK fails to
-# load, spans still work and the metric helpers just go quiet.
+# No-op when OTEL_ENABLED is false — SDK never loads, every method is safe to call.
 module Telemetry
   NAME = "dynamic-pricing".freeze
 
   class << self
-    # Runs the block inside a span when tracing is on, otherwise just yields.
     def span(name, attributes: {}, &)
       return yield(nil) unless tracing?
 

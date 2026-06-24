@@ -1,9 +1,5 @@
-# In production, set SECRETS_ARN to an AWS Secrets Manager ARN containing a
-# JSON object of key/value pairs. Each key is merged into ENV (existing values
-# win, so platform-injected vars can still override).
-#
-# Other providers (GCP Secret Manager, HashiCorp Vault, K8s secrets) that
-# inject vars at the platform level don't need this file at all.
+# Set SECRETS_ARN in production to an AWS Secrets Manager ARN (JSON key/value).
+# Each key is merged into ENV; existing values win so platform vars take precedence.
 return unless Rails.env.production?
 return unless (arn = ENV.fetch("SECRETS_ARN", nil))
 

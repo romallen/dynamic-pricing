@@ -13,53 +13,43 @@ AllCops:
     - "node_modules/**/*"
     - "tmp/**/*"
 
-# Rails projects conventionally use double-quoted strings.
 Style/StringLiterals:
   EnforcedStyle: double_quotes
 
-# Compact namespace style (Api::V1::Foo) is idiomatic in Rails controllers
-# and service objects. The nested alternative adds indentation without clarity.
 Style/ClassAndModuleChildren:
   Enabled: false
 
-# Docs are handled by the README and inline comments where non-obvious.
 Style/Documentation:
   Enabled: false
 
-# Frozen string literal comments add noise without benefit in a small Rails API.
 Style/FrozenStringLiteralComment:
   Enabled: false
 
-# Allow longer lines in tests — assertions read better on one line.
+# Assertions read better on one line.
 Layout/LineLength:
   Max: 120
   Exclude:
     - "test/**/*"
 
-# OpenStruct is deprecated in newer Ruby but acceptable in test helpers.
+# OpenStruct is deprecated but fine in test helpers.
 Style/OpenStructUse:
   Exclude:
     - "test/**/*"
 
-# Allow longer blocks in tests (data-driven tests, setup blocks) and config files.
 Metrics/BlockLength:
   Exclude:
     - "test/**/*"
     - "config/**/*"
     - "lib/tasks/**/*"
 
-# Test files grow naturally as scenarios are added. Splitting them just for
-# line-count reasons makes them harder to follow.
 Metrics/ClassLength:
   Exclude:
     - "test/**/*"
 
-# Allow slightly longer methods in service objects where the flow needs to stay together.
 Metrics/MethodLength:
   Max: 30
 
-# Rake tasks in dev.rake don't need the :environment dependency —
-# they only shell out to docker compose.
+# dev.rake tasks shell out to docker compose — no Rails env needed.
 Rails/RakeEnvironment:
   Exclude:
     - "lib/tasks/dev.rake"

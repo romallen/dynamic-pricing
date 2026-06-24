@@ -1,7 +1,6 @@
 require "test_helper"
 
-# OTEL_ENABLED is false in the test env, so the SDK never loads and Telemetry
-# must be a safe no-op: spans still yield, metric recorders never raise.
+# OTEL is off in tests — everything must be a safe no-op.
 class TelemetryTest < ActiveSupport::TestCase
   test "span yields the block and returns its value when tracing is off" do
     yielded = false

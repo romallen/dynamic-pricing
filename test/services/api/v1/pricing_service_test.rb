@@ -112,10 +112,6 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
     end
   end
 
-  # ---------------------------------------------------------------------------
-  # Cache TTL
-  # ---------------------------------------------------------------------------
-
   test "cache expires after TTL and triggers a fresh API call" do
     api_call_count = 0
     counting_stub  = lambda { |**|
@@ -126,7 +122,6 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
     stub_rate_api(counting_stub) do
       run_pricing_service # populates cache
 
-      # Jump past the 5-minute window — the cached entry should now be stale
       travel Api::V1::PricingService::CACHE_TTL + 1.second do
         run_pricing_service
       end
@@ -134,10 +129,6 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
       assert_equal 2, api_call_count, "Cache should expire after #{Api::V1::PricingService::CACHE_TTL}, forcing a fresh API call"
     end
   end
-
-  # ---------------------------------------------------------------------------
-  # Malformed / unexpected API responses
-  # ---------------------------------------------------------------------------
 
   test "malformed JSON in success response: adds error" do
     stub_rate_api(OpenStruct.new(success?: true, body: "not-valid-json")) do
@@ -166,8 +157,7 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
     end
   end
 
-  # A 200 response whose body is valid JSON but the wrong shape must NOT crash
-  # the service (which would surface as a 500). It should degrade to a 400.
+  # Valid JSON but wrong shape — must degrade to a 400, not a 500.
   [
     [%({"error":"internal"}), "well-formed JSON object with no rates key"],
     [%({}),                   "empty JSON object"],
@@ -193,7 +183,6 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
     end
   end
 
-  # An error response whose body is valid non-object JSON must not crash either.
   [
     [%(null), "null body"],
     [%([]),   "JSON array body"]
@@ -207,10 +196,6 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
       end
     end
   end
-
-  # ---------------------------------------------------------------------------
-  # Data-driven: spot-check several valid param combinations
-  # ---------------------------------------------------------------------------
 
   [
     %w[Summer FloatingPointResort SingletonRoom],
