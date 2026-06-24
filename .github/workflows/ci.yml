@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker compose build
+      - name: Start services
+        run: docker compose up -d
+      - name: Test
+        run: docker compose exec -T interview-dev ./bin/rails test
+      - name: Lint
+        run: docker compose exec -T interview-dev bundle exec rubocop
+      - name: Typecheck
+        run: docker compose exec -T interview-dev bundle exec steep check
+      - name: Stop services
+        if: always()
+        run: docker compose down

@@ -40,6 +40,19 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
     end
   end
 
+  test "slow upstream: a timeout is handled like any other failure" do
+    RateApiClient.stub(:get_rate, ->(**) { raise Net::ReadTimeout }) do
+      service = run_pricing_service
+
+      assert_not service.valid?
+      assert_includes service.errors.first, "Could not reach the pricing model"
+
+      cached = Rails.cache.read("pricing/#{DEFAULT_PERIOD}/#{DEFAULT_HOTEL}/#{DEFAULT_ROOM}")
+
+      assert_nil cached, "A timed-out request must never be cached"
+    end
+  end
+
   test "API error response: adds the error from the response body" do
     stub_rate_api(mock_api_error_response(message: "Rate not found")) do
       service = run_pricing_service
