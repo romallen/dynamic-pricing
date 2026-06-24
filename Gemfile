@@ -41,6 +41,7 @@ gem "opentelemetry-exporter-otlp-metrics", require: false
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[mri windows]
+  gem "dotenv-rails"
 
   gem "rbs",                 require: false
   gem "rubocop",             require: false
@@ -55,4 +56,8 @@ group :development do
 
   # Live reloading for development
   gem "listen", "~> 3.3"
+end
+
+group :production do
+  gem "aws-sdk-secretsmanager", require: false
 end
