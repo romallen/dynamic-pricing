@@ -18,8 +18,6 @@ RUN apk add --no-cache \
     git \
     pkgconfig \
     curl \
-    sqlite-dev \
-    sqlite \
     tzdata
 
 # Install application gems
@@ -28,4 +26,4 @@ RUN bundle install --gemfile=/rails/Gemfile
 
 # Start the server by default, this can be overwritten at runtime
 EXPOSE 3000
-CMD ["sh", "-c", "./bin/rails db:prepare && ./bin/rails server -b 0.0.0.0"]
+CMD ["sh", "-c", "./bin/rails server -b 0.0.0.0"]
