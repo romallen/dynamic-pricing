@@ -3,10 +3,6 @@ require "test_helper"
 class Api::V1::PricingServiceTest < ActiveSupport::TestCase
   include ActiveSupport::Testing::TimeHelpers
 
-  setup do
-    Rails.cache.clear
-  end
-
   test "cache miss: calls the API and stores the result" do
     stub_rate_api(mock_api_response) do
       service = run_pricing_service
@@ -54,8 +50,7 @@ class Api::V1::PricingServiceTest < ActiveSupport::TestCase
   end
 
   test "rate not found in response: adds an error and does not cache" do
-    empty_rates = OpenStruct.new(success?: true, body: { "rates" => [] }.to_json)
-    stub_rate_api(empty_rates) do
+    stub_rate_api(mock_empty_rates_response) do
       service = run_pricing_service
 
       assert_not service.valid?

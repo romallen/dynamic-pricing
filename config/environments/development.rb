@@ -17,7 +17,13 @@ Rails.application.configure do
   # Enable server timing
   config.server_timing = true
 
-  config.cache_store = :memory_store
+  # Toggle with `rails dev:cache` (creates/removes tmp/caching-dev.txt).
+  if Rails.root.join("tmp/caching-dev.txt").exist?
+    config.cache_store = :memory_store
+  else
+    config.action_controller.perform_caching = false
+    config.cache_store = :null_store
+  end
 
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log

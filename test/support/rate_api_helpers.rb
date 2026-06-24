@@ -2,10 +2,9 @@
 # Included in ActiveSupport::TestCase via test_helper.rb, so every test class
 # can use these without requiring anything extra.
 module RateApiHelpers
-  # Mirror the allowlists from the controller so tests can loop over valid values.
-  VALID_PERIODS = %w[Summer Autumn Winter Spring].freeze
-  VALID_HOTELS  = %w[FloatingPointResort GitawayHotel RecursionRetreat].freeze
-  VALID_ROOMS   = %w[SingletonRoom BooleanTwin RestfulKing].freeze
+  VALID_PERIODS = Api::V1::PricingController::VALID_PERIODS
+  VALID_HOTELS  = Api::V1::PricingController::VALID_HOTELS
+  VALID_ROOMS   = Api::V1::PricingController::VALID_ROOMS
 
   # Sensible defaults so individual tests only have to specify what they care about.
   DEFAULT_PERIOD = "Summer".freeze
@@ -27,6 +26,11 @@ module RateApiHelpers
   # Builds a fake HTTP failure response (4xx/5xx).
   def mock_api_error_response(message: "Rate not found")
     OpenStruct.new(success?: false, body: { "error" => message }.to_json)
+  end
+
+  # Builds a successful response where the rates array is empty (no matching rate).
+  def mock_empty_rates_response
+    OpenStruct.new(success?: true, body: { "rates" => [] }.to_json)
   end
 
   # Stubs RateApiClient.get_rate for the duration of the block.

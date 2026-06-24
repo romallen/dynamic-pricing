@@ -1,10 +1,6 @@
 require "test_helper"
 
 class Api::V1::PricingControllerTest < ActionDispatch::IntegrationTest
-  setup do
-    Rails.cache.clear
-  end
-
   test "returns a rate for valid parameters" do
     stub_rate_api(mock_api_response(rate: "15000")) do
       get api_v1_pricing_url, params: { period: "Summer", hotel: "FloatingPointResort", room: "SingletonRoom" }
@@ -69,8 +65,7 @@ class Api::V1::PricingControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "returns 400 when API responds but no rate matches the parameters" do
-    empty_rates = OpenStruct.new(success?: true, body: { "rates" => [] }.to_json)
-    stub_rate_api(empty_rates) do
+    stub_rate_api(mock_empty_rates_response) do
       get api_v1_pricing_url, params: { period: "Summer", hotel: "FloatingPointResort", room: "SingletonRoom" }
 
       assert_response :bad_request

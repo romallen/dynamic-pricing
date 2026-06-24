@@ -11,4 +11,6 @@ class ActiveSupport::TestCase
 
   # Make RateApiHelpers available in every test class.
   include RateApiHelpers
+
+  teardown { Rails.cache.clear }
 end
