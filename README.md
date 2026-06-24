@@ -95,4 +95,4 @@ Things added beyond the core caching requirement:
 
 ## AI assistance
 
-I used Claude Code throughout — design, implementation, tests. I directed the decisions and own the approach.
+Ruby isn't my primary language, so I leaned on Claude Code to move faster — syntax, idioms, Rails conventions. I directed the design decisions and architecture, and I own the approach.
