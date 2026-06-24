@@ -56,7 +56,7 @@ group :development do
   # gem "spring"
 
   # Live reloading for development
-  gem "listen", "~> 3.3"
+  gem "listen", "~> 3.10"
 end
 
 group :production do
