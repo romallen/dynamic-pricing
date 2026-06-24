@@ -4,6 +4,11 @@ services:
     ports:
       - "8080:8080"
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
   interview-dev:
     build: .
     ports:
@@ -11,6 +16,13 @@ services:
     volumes:
       - .:/rails
     environment:
-      - RATE_API_URL=http://rate-api:8080
+      - RATE_API_URL=${RATE_API_URL}
+      - RATE_API_TOKEN=${RATE_API_TOKEN}
+      - REDIS_URL=${REDIS_URL}
+      - OTEL_ENABLED=${OTEL_ENABLED}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - OTEL_TRACES_EXPORTER=${OTEL_TRACES_EXPORTER}
     depends_on:
       - rate-api
+      - redis

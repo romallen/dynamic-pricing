@@ -1,0 +1,55 @@
+plugins:
+  - rubocop-rails
+  - rubocop-minitest
+  - rubocop-performance
+
+AllCops:
+  NewCops: enable
+  TargetRubyVersion: 3.2
+  Exclude:
+    - "db/**/*"
+    - "bin/**/*"
+    - "vendor/**/*"
+    - "node_modules/**/*"
+    - "tmp/**/*"
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/ClassAndModuleChildren:
+  Enabled: false
+
+Style/Documentation:
+  Enabled: false
+
+Style/FrozenStringLiteralComment:
+  Enabled: false
+
+# Assertions read better on one line.
+Layout/LineLength:
+  Max: 120
+  Exclude:
+    - "test/**/*"
+
+# OpenStruct is deprecated but fine in test helpers.
+Style/OpenStructUse:
+  Exclude:
+    - "test/**/*"
+
+Metrics/BlockLength:
+  Exclude:
+    - "test/**/*"
+    - "config/**/*"
+    - "lib/tasks/**/*"
+
+Metrics/ClassLength:
+  Exclude:
+    - "test/**/*"
+
+Metrics/MethodLength:
+  Max: 30
+
+# dev.rake tasks shell out to docker compose — no Rails env needed.
+Rails/RakeEnvironment:
+  Exclude:
+    - "lib/tasks/dev.rake"

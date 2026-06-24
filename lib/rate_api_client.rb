@@ -1,8 +1,10 @@
 class RateApiClient
   include HTTParty
-  base_uri ENV.fetch('RATE_API_URL', 'http://localhost:8080')
+
+  base_uri ENV.fetch("RATE_API_URL", "http://localhost:8080")
   headers "Content-Type" => "application/json"
-  headers 'token' => ENV.fetch('RATE_API_TOKEN', '04aa6f42aa03f220c2ae9a276cd68c62')
+  headers "token" => ENV.fetch("RATE_API_TOKEN")
+  default_timeout Integer(ENV.fetch("RATE_API_TIMEOUT", 15))
 
   def self.get_rate(period:, hotel:, room:)
     params = {
@@ -14,6 +16,6 @@ class RateApiClient
         }
       ]
     }.to_json
-    self.post("/pricing", body: params)
+    post("/pricing", body: params)
   end
 end
