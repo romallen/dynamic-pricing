@@ -32,7 +32,7 @@ rate-api gives 1,000 calls/day. The service needs to handle 10,000+. Without a c
 
 Requests hit `PricingController` (validates params against fixed allowlists) then `PricingService`. The service calls `Rails.cache.fetch` with a 5-minute TTL. Cache hit returns immediately. On a miss, it calls rate-api, caches the result, and returns it. `race_condition_ttl: 5` prevents expiry stampedes. `skip_nil: true` means errors never get cached — a failed call returns a 400 and the next request retries fresh.
 
-**Why MemoryStore:** ships with Rails, no extra services needed. The cache resets on restart, but with a 5-minute TTL that costs at most one extra API call per combination. Scaling to multiple hosts means swapping to `:redis_cache_store` — `PricingService` doesn't change.
+**Why Redis:** Puma runs multiple worker processes, each with its own memory. MemoryStore means each worker has a separate cache — a cache miss in worker 2 hits rate-api even if worker 1 just cached the same key. Redis is a single shared store, so a cached value is visible to all workers immediately. The cache also survives app restarts, which reduces cold-start load. `PricingService` calls `Rails.cache.fetch` and doesn't care what's behind it — swapping the store is a config change.
 
 ---
 
@@ -71,7 +71,7 @@ rake docker:typecheck  # RBS signatures
 
 Things added beyond the core caching requirement:
 
-- **HTTP timeout.** `default_timeout 3` on the HTTParty client. A slow rate-api response can't tie up a Puma thread indefinitely. Raises `Net::ReadTimeout`, caught and returned as a 400.
+- **HTTP timeout.** `default_timeout 15` on the HTTParty client. A slow rate-api response can't tie up a Puma thread indefinitely. Raises `Net::ReadTimeout`, caught and returned as a 400.
 - **Stampede protection.** `race_condition_ttl: 5` on every `cache.fetch`. When a key expires under load, one thread regenerates it while the rest briefly serve the stale value.
 - **Error isolation.** `skip_nil: true` means failed and malformed API responses are never written to the cache. The next request always gets a fresh attempt.
 - **Input validation.** Controller validates all three params against fixed allowlists before the service runs. Invalid params return 400 immediately — nothing reaches the cache or the upstream.
@@ -85,7 +85,6 @@ Things added beyond the core caching requirement:
 
 ## Future improvements
 
-- **Shared cache.** Swap MemoryStore for Redis or Valkey. Required for multi-host deployments or multiple Puma workers sharing state. `PricingService` doesn't change.
 - **Circuit breaker.** If rate-api goes down, every cache miss hammers it. A circuit breaker (e.g. `stoplight`) opens after N consecutive failures and short-circuits during a cooldown window.
 - **Quota tracking.** Rolling counter of upstream calls with an alert at ~80% of the 1,000/day cap. You want to know before requests start failing, not after.
 - **Telemetry backend.** The app emits JSON logs, OTel traces, and OTel metrics. Production needs a collector (Filebeat/Fluentd for logs, OTel Collector for traces/metrics) and dashboards — cache hit rate, upstream latency, error rate. Grafana/Tempo or Datadog both work with OTLP.
