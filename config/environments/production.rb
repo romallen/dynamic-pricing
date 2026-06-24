@@ -54,8 +54,11 @@ Rails.application.configure do
   # want to log everything, set the level to "debug".
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info")
 
-  # Use a different cache store in production.
-  # config.cache_store = :mem_cache_store
+  # Use an in-memory store, consistent with the single-instance design
+  # documented in the README. :mem_cache_store would require the `dalli` gem
+  # and a running memcached, neither of which this deployment provides.
+  # MemoryStore defaults to a 32 MB bound, so it cannot grow without limit.
+  config.cache_store = :memory_store
 
   # Use a real queuing backend for Active Job (and separate queues per environment).
   # config.active_job.queue_adapter = :resque
@@ -67,9 +70,6 @@ Rails.application.configure do
 
   # Don't log any deprecations.
   config.active_support.report_deprecations = false
-
-  # Do not dump schema after migrations.
-  config.active_record.dump_schema_after_migration = false
 
   # Enable DNS rebinding protection and other `Host` header attacks.
   # config.hosts = [
