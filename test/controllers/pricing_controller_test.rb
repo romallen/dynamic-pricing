@@ -3,8 +3,8 @@ require "test_helper"
 class Api::V1::PricingControllerTest < ActionDispatch::IntegrationTest
   test "should get pricing with all parameters" do
     mock_body = {
-      'rates' => [
-        { 'period' => 'Summer', 'hotel' => 'FloatingPointResort', 'room' => 'SingletonRoom', 'rate' => '15000' }
+      "rates" => [
+        { "period" => "Summer", "hotel" => "FloatingPointResort", "room" => "SingletonRoom", "rate" => "15000" }
       ]
     }.to_json
 
@@ -21,12 +21,13 @@ class Api::V1::PricingControllerTest < ActionDispatch::IntegrationTest
       assert_equal "application/json", @response.media_type
 
       json_response = JSON.parse(@response.body)
+
       assert_equal "15000", json_response["rate"]
     end
   end
 
   test "should return error when rate API fails" do
-    mock_response = OpenStruct.new(success?: false, body: { 'error' => 'Rate not found' })
+    mock_response = OpenStruct.new(success?: false, body: { "error" => "Rate not found" })
 
     RateApiClient.stub(:get_rate, mock_response) do
       get api_v1_pricing_url, params: {
@@ -39,6 +40,7 @@ class Api::V1::PricingControllerTest < ActionDispatch::IntegrationTest
       assert_equal "application/json", @response.media_type
 
       json_response = JSON.parse(@response.body)
+
       assert_includes json_response["error"], "Rate not found"
     end
   end
@@ -50,6 +52,7 @@ class Api::V1::PricingControllerTest < ActionDispatch::IntegrationTest
     assert_equal "application/json", @response.media_type
 
     json_response = JSON.parse(@response.body)
+
     assert_includes json_response["error"], "Missing required parameters"
   end
 
@@ -64,6 +67,7 @@ class Api::V1::PricingControllerTest < ActionDispatch::IntegrationTest
     assert_equal "application/json", @response.media_type
 
     json_response = JSON.parse(@response.body)
+
     assert_includes json_response["error"], "Missing required parameters"
   end
 
@@ -78,6 +82,7 @@ class Api::V1::PricingControllerTest < ActionDispatch::IntegrationTest
     assert_equal "application/json", @response.media_type
 
     json_response = JSON.parse(@response.body)
+
     assert_includes json_response["error"], "Invalid period"
   end
 
@@ -92,6 +97,7 @@ class Api::V1::PricingControllerTest < ActionDispatch::IntegrationTest
     assert_equal "application/json", @response.media_type
 
     json_response = JSON.parse(@response.body)
+
     assert_includes json_response["error"], "Invalid hotel"
   end
 
@@ -106,6 +112,7 @@ class Api::V1::PricingControllerTest < ActionDispatch::IntegrationTest
     assert_equal "application/json", @response.media_type
 
     json_response = JSON.parse(@response.body)
+
     assert_includes json_response["error"], "Invalid room"
   end
 end

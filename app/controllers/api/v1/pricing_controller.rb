@@ -15,7 +15,7 @@ class Api::V1::PricingController < ApplicationController
     if service.valid?
       render json: { rate: service.result }
     else
-      render json: { error: service.errors.join(', ') }, status: :bad_request
+      render json: { error: service.errors.join(", ") }, status: :bad_request
     end
   end
 
@@ -36,8 +36,8 @@ class Api::V1::PricingController < ApplicationController
       return render json: { error: "Invalid hotel. Must be one of: #{VALID_HOTELS.join(', ')}" }, status: :bad_request
     end
 
-    unless VALID_ROOMS.include?(params[:room])
-      return render json: { error: "Invalid room. Must be one of: #{VALID_ROOMS.join(', ')}" }, status: :bad_request
-    end
+    return if VALID_ROOMS.include?(params[:room])
+
+    render json: { error: "Invalid room. Must be one of: #{VALID_ROOMS.join(', ')}" }, status: :bad_request
   end
 end
